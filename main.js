@@ -23,26 +23,64 @@ function sendDailyNews() {
     rawNewsText += `・${title}\n  URL: ${link}\n\n`;
   }
 
-  // 2. Gemini APIを使ってニュースを要約
-  const prompt = `以下のニュース3件を読み、忙しい朝でも30秒で理解できるように、それぞれの要点を簡潔にまとめてください。\n\n${rawNewsText}`;
+  // 2. Gemini APIを使ってニュースを要約（出力フォーマットを厳格に指定）
+  const prompt = `以下のニュース3件を読み、忙しい朝でも30秒で理解できるように、それぞれの要点を簡潔にまとめてください。
+
+【出力ルール】
+- 箇条書き記号（* や - や ・）は絶対に使わないでください。
+- 各ニュースは **数字. タイトル** の形式で見出しにし、次の行に要約文を書いてください。
+
+${rawNewsText}`;
+
   const summary = callGemini(prompt);
 
-  // 3. Gmailで自分宛てに送信
-  const subject = "【朝の要約ニュース】今日のピックアップ";
-  const body = `おはようございます！今日の要約ニュースです。\n\n${summary}`;
-  
-  GmailApp.sendEmail(TO_EMAIL, subject, body);
+  // 3. 今日のおしゃれな日付文字列を作成
+  const now = new Date();
+  const dateStr = Utilities.formatDate(now, "JST", "yyyy.MM.dd EEE").toUpperCase();
+
+  // 4. HTMLテンプレートを使ってメール本文を作成
+  const htmlBody = buildHtmlEmail(summary, dateStr);
+  const plainBody = `おはようございます！今日の要約ニュースです。\n\n${summary}`;
+  const subject = `☀️ 【朝の要約ニュース】${Utilities.formatDate(now, "JST", "MM/dd")}`;
+
+  // 5. Gmailで送信
+  GmailApp.sendEmail(TO_EMAIL, subject, plainBody, {
+    htmlBody: htmlBody
+  });
 }
 
 // ==========================================
-// 🤖 Gemini APIを叩く関数（最新モデル対応）
+// 🎨 HTML整形関数（余白とスタイルを緻密に調整）
+// ==========================================
+function buildHtmlEmail(summary, dateStr) {
+  const template = HtmlService.createTemplateFromFile('index');
+
+  // 1. マークダウンの太字（見出し）を抽出して、余白付きの見出しブロックに変換
+  let html = summary.replace(/\*\*(.*?)\*\*/g, (match, title) => {
+    // ポッチや余計な記号を除去
+    const cleanTitle = title.replace(/^[・\*\-\s]+/, '');
+    return `<div style="font-size: 16px; font-weight: 700; color: #1e293b; margin-top: 20px; margin-bottom: 8px;">${cleanTitle}</div>`;
+  });
+
+  // 2. 残った行（本文）に適切な行高と余白を設定
+  html = html
+    .replace(/^([^\<].+)$/gm, '<div style="font-size: 14px; color: #475569; line-height: 1.7; margin-bottom: 16px;">$1</div>')
+    .replace(/\n/g, '');
+
+  template.formattedSummary = html;
+  template.dateStr = dateStr;
+
+  return template.evaluate().getContent();
+}
+
+// ==========================================
+// 🤖 Gemini APIを叩く関数
 // ==========================================
 function callGemini(promptText) {
   if (!GEMINI_API_KEY) {
     throw new Error('スクリプトプロパティに GEMINI_API_KEY が設定されていません！');
   }
 
-  // 新規キー対応の最新モデル gemini-3.5-flash を指定
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`;
   
   const payload = {
@@ -69,4 +107,31 @@ function callGemini(promptText) {
   }
   
   return json.candidates[0].content.parts[0].text;
+}
+
+// ==========================================
+// 🧪 API消費ゼロ！HTMLデザイン確認用テスト関数
+// ==========================================
+function sendTestEmail() {
+  // Gemini APIを叩かずに使うダミーテキスト
+  const dummySummary = 
+    "**1. 長期金利が約30年ぶりの高水準に上昇**\n" +
+    "日銀の政策修正への思惑などを背景に、長期金利が上昇。今後の住宅ローン金利や企業融資への影響が注目されます。\n\n" +
+    "**2. 各地で厳しい残暑、熱中症に引き続き警戒**\n" +
+    "季節外れの厳しい暑さが続いており、各地で真夏日などを記録。こまめな水分補給など徹底した対策が必要です。\n\n" +
+    "**3. 「稼げるブルーカラー」待遇改善で人材定着へ**\n" +
+    "深刻な人手不足に直面する現場職で給料引き上げが活発化。若者を引きつける新トレンドとなるか注目です。";
+
+  const now = new Date();
+  const dateStr = Utilities.formatDate(now, "JST", "yyyy.MM.dd EEE").toUpperCase();
+
+  const htmlBody = buildHtmlEmail(dummySummary, dateStr);
+  const plainBody = `[TEST] 今日の要約ニュースです。\n\n${dummySummary}`;
+  const subject = `【TEST】朝の要約ニュース ${Utilities.formatDate(now, "JST", "MM/dd")}`;
+
+  GmailApp.sendEmail(TO_EMAIL, subject, plainBody, {
+    htmlBody: htmlBody
+  });
+
+  console.log("テストメールを送信しました！（API消費: 0回）");
 }
