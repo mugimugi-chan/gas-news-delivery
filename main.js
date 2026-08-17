@@ -23,7 +23,7 @@ function sendDailyNews() {
     rawNewsText += `・${title}\n  URL: ${link}\n\n`;
   }
 
-  // 2. Gemini APIを使ってニュースを要約（1回目のAPI呼び出し）
+  // 2. Gemini APIを使ってニュースを要約
   const prompt = `以下のニュース3件を読み、忙しい朝でも30秒で理解できるように、それぞれの要点を簡潔にまとめてください。\n\n${rawNewsText}`;
   const summary = callGemini(prompt);
 
@@ -35,10 +35,15 @@ function sendDailyNews() {
 }
 
 // ==========================================
-// 🤖 Gemini APIを叩く関数
+// 🤖 Gemini APIを叩く関数（最新モデル対応）
 // ==========================================
 function callGemini(promptText) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  if (!GEMINI_API_KEY) {
+    throw new Error('スクリプトプロパティに GEMINI_API_KEY が設定されていません！');
+  }
+
+  // 新規キー対応の最新モデル gemini-3.5-flash を指定
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`;
   
   const payload = {
     "contents": [
@@ -57,6 +62,11 @@ function callGemini(promptText) {
 
   const res = UrlFetchApp.fetch(url, options);
   const json = JSON.parse(res.getContentText());
+
+  if (json.error) {
+    console.error('Gemini API Error:', JSON.stringify(json.error));
+    throw new Error(`Gemini APIからエラーが返されました: ${json.error.message}`);
+  }
   
   return json.candidates[0].content.parts[0].text;
 }
