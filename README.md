@@ -91,9 +91,9 @@ clasp create --title "gas-news-delivery" --type standalone
 clasp push
 ```
 
-3. LINE Official Account の準備
+### 3. LINE Official Account の準備
 
-1. LINE Developers にて Messaging API チャネルを作成します。
+1. [LINE Developers](https://developers.line.biz/console/) にて Messaging API チャネルを作成します。
 2. BotアカウントをスマホのLINEで友だち追加します。
 3. チャネルアクセストークンを発行し、手順1のスクリプトプロパティに登録します。
 
