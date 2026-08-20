@@ -59,10 +59,43 @@ GASの「プロジェクトの設定」＞「スクリプト プロパティ」�
 | `TO_EMAIL` | ニュースを受け取る送信先メールアドレス |
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE Developers で発行した「チャネルアクセストークン（長期）」 |
 
-### 2. LINE Official Account の準備
+---
+
+### 2. コードの導入（選べる2パターン）
+
+ご自身の開発スタイルに合わせて、どちらかの方法で導入してください。
+
+#### パターンA：ブラウザのGASエディタに直接コピペする（サクッと試したい方向け）
+1. Google Apps Script で新規プロジェクトを作成します。
+2. 左メニュー「HTMLを追加」で `index.html` を作成し、リポジトリの `index.html` の中身を貼り付けます。
+3. `コード.gs` を `main.gs` にリネームし、リポジトリの `main.js` の中身を貼り付けます。
+4. ファイル追加（`+`）から `line.gs` を作成し、リポジトリの `line.js` の中身を貼り付けます。
+
+#### パターンB：clasp を使ってローカルからデプロイする（CLIで管理したい方向け）
+```bash
+# 1. リポジトリのクローン
+git clone [https://github.com/mugimugi-chan/gas-news-delivery.git](https://github.com/mugimugi-chan/gas-news-delivery.git)
+cd gas-news-delivery
+
+# 2. clasp の準備とログイン
+npm install -g @google/clasp
+clasp login
+
+# 3. GASプロジェクトの作成（新規作成の場合）
+clasp create --title "gas-news-delivery" --type standalone
+
+# （※既存のGASプロジェクトと紐付ける場合）
+# clasp clone "YOUR_SCRIPT_ID"
+
+# 4. コードのプッシュ
+clasp push
+```
+
+3. LINE Official Account の準備
+
 1. LINE Developers にて Messaging API チャネルを作成します。
 2. BotアカウントをスマホのLINEで友だち追加します。
-3. チャネルアクセストークンを発行し、上記のスクリプトプロパティに登録します。
+3. チャネルアクセストークンを発行し、手順1のスクリプトプロパティに登録します。
 
 ---
 
