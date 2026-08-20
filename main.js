@@ -6,25 +6,90 @@ const GEMINI_API_KEY = scriptProperties.getProperty('GEMINI_API_KEY');
 const TO_EMAIL       = scriptProperties.getProperty('TO_EMAIL');
 
 // ==========================================
-// 🚀 ニュース取得・要約・メール送信のメイン処理
+// 🚀 1. Gmailへニュースを送信する独立関数
 // ==========================================
-function sendDailyNews() {
-  // 1. Yahoo!ニュース（主要）のRSSを取得
-  const rssUrl = "https://news.yahoo.co.jp/rss/topics/top-picks.xml";
-  const response = UrlFetchApp.fetch(rssUrl);
-  const xml = XmlService.parse(response.getContentText());
-  const items = xml.getRootElement().getChild('channel').getChildren('item');
+function sendDailyNewsToGmail() {
+  console.log("--- Gmail配信処理を開始します ---");
 
-  // 最新3件の「タイトル」と「リンク」を抽出
-  let rawNewsText = "";
-  for (let i = 0; i < Math.min(items.length, 3); i++) {
-    let title = items[i].getChildText('title');
-    let link = items[i].getChildText('link');
-    rawNewsText += `・${title}\n  URL: ${link}\n\n`;
+  // ニュース取得 & Gemini要約を実行
+  const { summary, dateStr } = getNewsSummary_();
+  if (!summary) return;
+
+  if (!TO_EMAIL) {
+    console.error("【Error】スクリプトプロパティに TO_EMAIL が設定されていません。");
+    return;
   }
 
-  // 2. Gemini APIを使ってニュースを要約（出力フォーマットを厳格に指定）
-  const prompt = `以下のニュース3件を読み、忙しい朝でも30秒で理解できるように、それぞれの要点を簡潔にまとめてください。
+  // HTMLメールの作成と送信
+  const htmlBody = buildHtmlEmail(summary, dateStr);
+  const plainBody = `おはようございます！今日の要約ニュースです。\n\n${summary}`;
+  const now = new Date();
+  const subject = `☀️ 【朝の要約ニュース】${Utilities.formatDate(now, "JST", "MM/dd")}`;
+
+  GmailApp.sendEmail(TO_EMAIL, subject, plainBody, {
+    htmlBody: htmlBody
+  });
+
+  console.log("Gmailの送信が成功しました！");
+}
+
+// ==========================================
+// 💬 2. LINEへニュースを送信する独立関数
+// ==========================================
+function sendDailyNewsToLine() {
+  console.log("--- LINE配信処理を開始します ---");
+
+  // ニュース取得 & Gemini要約を実行
+  const { summary, dateStr } = getNewsSummary_();
+  if (!summary) return;
+
+  // LINE用テキストへ整形してブロードキャスト送信
+  const lineMessage = formatForLine(summary, dateStr);
+  sendLineNotification(lineMessage);
+
+  console.log("LINEの送信処理が完了しました！");
+}
+
+// ==========================================
+// 🔄 3. GmailとLINEの両方に一括送信する関数（トリガー用）
+// ==========================================
+function sendDailyNewsToAll() {
+  console.log("--- メール・LINE 一括配信を開始します ---");
+  sendDailyNewsToGmail();
+  sendDailyNewsToLine();
+  console.log("--- すべての配信が完了しました ---");
+}
+
+// ==========================================
+// 🛠️ 【共通内部関数】RSS取得 ＆ Gemini要約
+// ==========================================
+function getNewsSummary_() {
+  try {
+    // 1. 国内と国際の最新RSSを取得
+    const rssUrls = [
+      "https://news.yahoo.co.jp/rss/categories/domestic.xml", // 国内
+      "https://news.yahoo.co.jp/rss/categories/world.xml"    // 国際（世界事情）
+    ];
+
+    let rawNewsText = "";
+
+    rssUrls.forEach(url => {
+      const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+      if (response.getResponseCode() === 200) {
+        const xml = XmlService.parse(response.getContentText());
+        const items = xml.getRootElement().getChild('channel').getChildren('item');
+        
+        // 各カテゴリから上位2件ずつ抽出
+        for (let i = 0; i < Math.min(items.length, 2); i++) {
+          let title = items[i].getChildText('title');
+          let link = items[i].getChildText('link');
+          rawNewsText += `・${title}\n  URL: ${link}\n\n`;
+        }
+      }
+    });
+
+    // 2. Geminiプロンプト（国内外から重要なものを厳選させる）
+    const prompt = `以下の国内外の最新ニュースから、今日抑えておくべき重要ニュースを3件選び、忙しい朝でも30秒で理解できるように要点を簡潔にまとめてください。
 
 【出力ルール】
 - 箇条書き記号（* や - や ・）は絶対に使わないでください。
@@ -32,37 +97,43 @@ function sendDailyNews() {
 
 ${rawNewsText}`;
 
-  const summary = callGemini(prompt);
+    const summary = callGemini(prompt);
+    const now = new Date();
+    const dateStr = Utilities.formatDate(now, "JST", "yyyy.MM.dd EEE").toUpperCase();
 
-  // 3. 今日のおしゃれな日付文字列を作成
-  const now = new Date();
-  const dateStr = Utilities.formatDate(now, "JST", "yyyy.MM.dd EEE").toUpperCase();
-
-  // 4. HTMLテンプレートを使ってメール本文を作成
-  const htmlBody = buildHtmlEmail(summary, dateStr);
-  const plainBody = `おはようございます！今日の要約ニュースです。\n\n${summary}`;
-  const subject = `☀️ 【朝の要約ニュース】${Utilities.formatDate(now, "JST", "MM/dd")}`;
-
-  // 5. Gmailで送信
-  GmailApp.sendEmail(TO_EMAIL, subject, plainBody, {
-    htmlBody: htmlBody
-  });
+    return { summary, dateStr };
+  } catch (e) {
+    console.error("要約生成エラー: " + e.toString());
+    return { summary: null, dateStr: null };
+  }
 }
 
 // ==========================================
-// 🎨 HTML整形関数（余白とスタイルを緻密に調整）
+// 💬 LINE送信用テキスト整形関数
+// ==========================================
+function formatForLine(summary, dateStr) {
+  let cleanSummary = summary.replace(/\*\*(.*?)\*\*/g, '$1');
+
+  let text = `🗞️ 【朝刊のむぎちゃん】 ${dateStr}\n`;
+  text += `----------------------------------------\n\n`;
+  text += cleanSummary.trim();
+  text += `\n\n----------------------------------------\n`;
+  text += `今日も良い一日をお過ごしください！☀️`;
+
+  return text;
+}
+
+// ==========================================
+// 🎨 HTML整形関数
 // ==========================================
 function buildHtmlEmail(summary, dateStr) {
   const template = HtmlService.createTemplateFromFile('index');
 
-  // 1. マークダウンの太字（見出し）を抽出して、余白付きの見出しブロックに変換
   let html = summary.replace(/\*\*(.*?)\*\*/g, (match, title) => {
-    // ポッチや余計な記号を除去
     const cleanTitle = title.replace(/^[・\*\-\s]+/, '');
     return `<div style="font-size: 16px; font-weight: 700; color: #1e293b; margin-top: 20px; margin-bottom: 8px;">${cleanTitle}</div>`;
   });
 
-  // 2. 残った行（本文）に適切な行高と余白を設定
   html = html
     .replace(/^([^\<].+)$/gm, '<div style="font-size: 14px; color: #475569; line-height: 1.7; margin-bottom: 16px;">$1</div>')
     .replace(/\n/g, '');
@@ -110,10 +181,9 @@ function callGemini(promptText) {
 }
 
 // ==========================================
-// 🧪 API消費ゼロ！HTMLデザイン確認用テスト関数
+// 🧪 API消費ゼロ！HTML＆LINE送信テスト用関数
 // ==========================================
-function sendTestEmail() {
-  // Gemini APIを叩かずに使うダミーテキスト
+function sendTestAll() {
   const dummySummary = 
     "**1. 要約タイトルその1**\n" +
     "最初のニュースの内容です。\n\n" +
@@ -125,13 +195,17 @@ function sendTestEmail() {
   const now = new Date();
   const dateStr = Utilities.formatDate(now, "JST", "yyyy.MM.dd EEE").toUpperCase();
 
-  const htmlBody = buildHtmlEmail(dummySummary, dateStr);
-  const plainBody = `[TEST] 今日の要約ニュースです。\n\n${dummySummary}`;
-  const subject = `【TEST】朝の要約ニュース ${Utilities.formatDate(now, "JST", "MM/dd")}`;
+  // メールテスト
+  if (TO_EMAIL) {
+    const htmlBody = buildHtmlEmail(dummySummary, dateStr);
+    const plainBody = `[TEST] 今日の要約ニュースです。\n\n${dummySummary}`;
+    const subject = `【TEST】朝の要約ニュース ${Utilities.formatDate(now, "JST", "MM/dd")}`;
+    GmailApp.sendEmail(TO_EMAIL, subject, plainBody, { htmlBody: htmlBody });
+  }
 
-  GmailApp.sendEmail(TO_EMAIL, subject, plainBody, {
-    htmlBody: htmlBody
-  });
+  // LINEテスト
+  const lineMessage = formatForLine(dummySummary, dateStr);
+  sendLineNotification(lineMessage);
 
-  console.log("テストメールを送信しました！（API消費: 0回）");
+  console.log("テストメール＆LINEテスト送信完了！");
 }
