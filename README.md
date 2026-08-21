@@ -125,14 +125,3 @@ clasp push
   `[https://news.yahoo.co.jp/rss/topics/top-picks.xml](https://news.yahoo.co.jp/rss/topics/top-picks.xml)`（主要トピックス）は、タイミングによってアーカイブ記事や回想ニュースを返してくる仕様があるため。
 * **対策**:  
   常にリアルタイムな最新ニュースを取得するため、**国内カテゴリ（`domestic.xml`）** と **国際カテゴリ（`world.xml`）** の2つのRSSをGAS側で取得・合成してGeminiに渡し、そこから重要ニュースを3件厳選させるロジックにアップデートしました。
-
----
-
-## 🧪 各機能の単体テスト
-
-コード内には、Gemini APIの無駄な消費を防ぎつつ安全に動作確認ができるテスト関数を用意しています。
-
-* **`sendDailyNewsToGmail()`**: Gmail送信のみを実行
-* **`sendDailyNewsToLine()`**: LINE（Flex Message）送信のみを実行
-* **`sendDailyNewsToAll()`**: メールとLINEの両方に一括送信（本番トリガー用）
-* **`testLineFlexSend()`** (`line.gs`内): API消費ゼロでLINEのカードデザイン（Flex Message）の表示を確認
